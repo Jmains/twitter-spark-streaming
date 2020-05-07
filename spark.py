@@ -1,49 +1,37 @@
 from pyspark import SparkConf, SparkContext
 from pyspark.streaming import StreamingContext
+import json
 from geopy.geocoders import Nominatim
 from textblob import TextBlob
-# from elasticsearch import Elasticsearch
+import re
+
+geolocator = Nominatim(user_agent='tweet')
 
 TCP_IP = 'localhost'
 TCP_PORT = 9001
 
-def determineSentiment(polarity):
-        switcher = {
-            polarity == 0: 'neutral',
-            polarity > 0: 'postive'    
-        }
-        return switcher.get(polarity, "negative")
-
-def processTweet(tweet):
-    # Here, you should implement:
-    # (i) Sentiment analysis,
-    # (ii) Get data corresponding to place where the tweet was generate (using geopy or googlemaps)
-    # (iii) Index the data using Elastic Search 
-
+def testDisplay(tweet):
+    
     tweetData = tweet.split("::")
 
     if len(tweetData) > 1:
-        
         text = tweetData[1]
-        rawLocation = tweetData[0]
-        
-        # (i) Apply Sentiment analysis in "text"
-        sentiment = TextBlob(text)
-        sentiment = determineSentiment(sentiment.polarity)
 
-	# (ii) Get geolocation (state, country, lat, lon, etc...) from rawLocation
+        if float(TextBlob(text).sentiment.polarity) > 0.3:
+            sentiment = "postive"
+        elif float(TextBlob(text).sentiment.polarity) < -0.3:
+            sentiment = "negative"
+        else:
+            sentiment = "neutral"
 
-        print("\n\n=========================\ntweet: ", tweet)
-        print("Raw location from tweet status: ", rawLocation)
-        # print("lat: ", lat)
-        # print("lon: ", lon)
-        #print("state: ", state)
-        #print("country: ", country)
-        print("Text: ", text)
-        print("Sentiment: ", sentiment)
-
-        # (iii) Post the index on ElasticSearch or log your data in some other way (you are always free!!) 
-        
+        try:
+            location = geolocator.geocode(tweetData[0], addressdetails=True)
+            lat = location.raw['lat']
+            lon = location.raw['lon']
+            state = location.raw['address']['state']
+            country = location.raw['address']['country']
+        except:
+            lat=lon=state=country=None
 
 # Pyspark
 # create spark configuration
@@ -61,7 +49,8 @@ ssc.checkpoint("checkpoint_TwitterApp")
 # read data from port 900
 dataStream = ssc.socketTextStream(TCP_IP, TCP_PORT)
 
-dataStream.foreachRDD(lambda rdd: rdd.foreach(processTweet))
+
+dataStream.foreachRDD(lambda rdd: rdd.foreach(testDisplay))
 
 ssc.start()
 ssc.awaitTermination()
